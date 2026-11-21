@@ -50,7 +50,7 @@ def main() -> None:
     held = {}
     for name, path, rep in [
         ("dev", Path("data/processed/mustcatch_dev.jsonl"), "reports/mustcatch_dev.json"),
-        ("heldout2", Path("data/processed/mustcatch_heldout2.jsonl"), "reports/mustcatch_heldout.json"),
+        ("heldout2", Path("data/processed/mustcatch_heldout2.jsonl"), "reports/mustcatch_heldout2.json"),
     ]:
         if not path.exists():
             continue

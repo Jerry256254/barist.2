@@ -6,6 +6,15 @@ from pathlib import Path
 import torch
 
 from .evaluate import load_checkpoint, predict_full, predict_proba_chunked
+
+CAT_PRIORITY = ["sexual_abuse", "self_harm", "violence", "weapons_explosives", "drugs",
+                "cybercrime_fraud", "jailbreak_injection", "illegal_marketplace", "other_unsafe",
+                "hate_harassment"]  # hate last: catch-all
+
+
+def _cat_rank(c: str) -> int:
+    return CAT_PRIORITY.index(c) if c in CAT_PRIORITY else 99
+
 from .langdetect import detect_lang, must_catch_hit, review_hit, is_support_context, SUPPORT_LINK
 
 
@@ -56,20 +65,41 @@ class SafetyModel:
         probs = predict_proba_chunked(self.model, self.tokenizer, [text[: self.max_chars * 8]], self.max_len, self.device, temperature=self.temperature)[0]
         cats = self._cats()
         row = predict_full(self.model, self.tokenizer, [text[: self.max_chars]], self.max_len, self.device, temperature=self.temperature)[0]
+        lang = detect_lang(text)
         lang_thr = self.state.get("lang_thresholds") or {}
-        thr = float(lang_thr.get(detect_lang(text), lang_thr.get("default", self.threshold)))
+        thr = float(lang_thr.get(lang, lang_thr.get("default", self.threshold)))
         is_unsafe = probs >= thr
         hit = must_catch_hit(text)  # Barist.1 hard pre-filter (CSAM / self-harm / DIY / poison / market)
         review = review_hit(text)   # jailbreak patterns -> needs_review, not a hard block
         if hit:
             is_unsafe = True
-        support = is_support_context(text) or "self_harm" in hit
+        help_ctx = is_support_context(text)
+        support = help_ctx or "self_harm" in hit
+        cat_scores = dict(zip(cats, row[2:])) if cats else {}
+        if not support and cats and "self_harm" in cats:
+            sh = cat_scores["self_harm"]
+            if sh >= 0.3:  # model-level self-harm signal -> support resources even without regex
+                support = True
+        # Item-1 hard block: high sexual_abuse / self_harm category score blocks regardless
+        # of the language threshold (cs/sk/default); 0.3 is a BLOCK decision only, not a label threshold.
+        cat_block: list[str] = []
+        if cats and not support and lang in ("cs", "sk", "default"):
+            cat_block = [c for c in ("sexual_abuse", "self_harm") if cat_scores.get(c, 0.0) >= 0.3]
+            if cat_block:
+                is_unsafe = True
+        if help_ctx and not hit and not cat_block:
+            # help-seeking context (e.g. "jak pomoct kamarádovi…") is NEVER blocked
+            is_unsafe = False
         flagged = None
         if cats and is_unsafe:
-            flagged = sorted(set([c for c, p in zip(cats, row[2:]) if p >= self.threshold]) | set(hit))
+            _fired = [c for c, p in zip(cats, row[2:]) if p >= self.threshold]
+            flagged = sorted(set(_fired) | set(hit) | set(cat_block), key=lambda c: (_cat_rank(c), -cat_scores.get(c, 1.0)))
+            if not flagged:
+                # unsafe must always carry >=1 category: top-1 by score
+                flagged = [max(cats, key=lambda c: cat_scores[c])]
         v = Verdict(label="unsafe" if is_unsafe else "safe", probability=probs,
                     threshold=thr, categories=flagged)
-        v.override = "must_catch" if hit else None
+        v.override = "must_catch" if hit else ("category_block" if cat_block else None)
         v.needs_support = SUPPORT_LINK if support else None
         v.needs_review = bool(review)
         return v

@@ -37,14 +37,14 @@ def bundle(tmp_path_factory):
 
 def test_bundle_has_all_required_files(bundle):
     out, _ = bundle
-    assert {"model.safetensors", "config.json", "tokenizer.json", "censer.py", "barist.1"} <= set(
+    assert {"model.safetensors", "config.json", "tokenizer.json", "censer.py", "barist.2"} <= set(
         p.name for p in out.iterdir()
     )
 
 
 def test_barist1_launcher_is_executable_shebang_script(bundle):
     out, _ = bundle
-    launcher = out / "barist.1"
+    launcher = out / "barist.2"
     content = launcher.read_text()
     assert content.startswith("#!")
     assert "from censer import main" in content

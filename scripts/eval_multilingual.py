@@ -106,12 +106,43 @@ def main() -> None:
                                              "test_f1@tuned": mthr["f1"], "test_fpr@tuned": fpr_test,
                                              "tuned_thr": best_thr,
                                              "note": "thr tuned on tune half (FPR<=5% benign, floor 0.3); F1/FPR on test half"}
-            if results[f"textdetox_{lang}"]["f1@0.5"] >= 0.45:  # keep langs where the model works at 0.5 at all
+            KEEP_LANGS = {"en", "de", "es", "fr", "it", "ru", "uk"}  # Barist.1.1: hin/tt/... removed (not ISO-supported)
+            if lang in KEEP_LANGS and results[f"textdetox_{lang}"]["f1@0.5"] >= 0.45:
                 lang_thresholds_out["langs"][lang] = round(best_thr, 3)
             print(f"textdetox_{lang}: n={len(labels)} f1@0.5={results[f'textdetox_{lang}']['f1@0.5']:.4f} "
                   f"test_f1@{best_thr:.2f}={mthr['f1']:.4f} test_fpr={fpr_test:.3f}", flush=True)
     except Exception as exc:
         print("textdetox skipped:", str(exc)[:150])
+    # Barist.1.1: tune cs on dev data (cs benign eval + dev must-catch), clamp 0.55-0.65,
+    # target FPR<=5% on benign AND recall>=80% on unsafe
+    try:
+        dev = [json.loads(l) for l in open("data/processed/mustcatch_dev.jsonl", encoding="utf-8")]
+        csben = [json.loads(l) for l in open("data/processed/cs_benign_eval.jsonl", encoding="utf-8")]
+        texts = [r["text"] for r in dev] + [r["text"] for r in csben]
+        labels = [int(r["label"]) for r in dev] + [0] * len(csben)
+        probs = predict_proba(model, tok, texts, max_len, device, batch_size=64)
+        best_thr, best_f1 = None, -1.0
+        for i in range(55, 66):
+            th = i / 100
+            tp = sum(1 for l, p in zip(labels, probs) if l == 1 and p >= th)
+            fp = sum(1 for l, p in zip(labels, probs) if l == 0 and p >= th)
+            fn = sum(1 for l, p in zip(labels, probs) if l == 1 and p < th)
+            n_neg = sum(1 for l in labels if l == 0); n_pos = sum(1 for l in labels if l == 1)
+            fpr = fp / max(1, n_neg); rec = tp / max(1, n_pos)
+            f1 = 2 * tp / max(1, 2 * tp + fp + fn)
+            if fpr <= 0.05 and rec >= 0.80 and f1 > best_f1:
+                best_f1, best_thr = f1, th
+        if best_thr is None:
+            best_thr = 0.6
+        # Barist.2 item 3: cs threshold FIXED at 0.5 (raising it broke recall on real
+        # threats like "Cigány bych všechny vystřílel" 0.578 -> safe). FP fix goes into
+        # data (phase W+), not into the threshold. Tuned value kept as diagnostics only.
+        lang_thresholds_out["langs"]["cs"] = 0.5
+        lang_thresholds_out["cs_tuned_on"] = "mustcatch_dev + cs_benign_eval; tuned value recorded but cs FIXED at 0.5 per Barist.2 review"
+        lang_thresholds_out["cs_tuned_value"] = round(best_thr, 3)
+        print(f"cs tuned thr={best_thr:.2f} (dev+cs_benign) -> FIXED cs=0.5", flush=True)
+    except Exception as exc:
+        print("cs tuning skipped:", str(exc)[:150])
     Path("reports/lang_thresholds.json").write_text(json.dumps(lang_thresholds_out, indent=2, ensure_ascii=False))
 
     # 2. held-out synthetic cs/de/es/fr (different seed than training data)

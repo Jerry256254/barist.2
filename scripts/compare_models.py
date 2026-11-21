@@ -1,4 +1,4 @@
-"""Benchmark Barist.1 against other public safety classifiers on the same test split.
+"""Benchmark Barist.2 against other public safety classifiers on the same test split.
 
 Every model is evaluated on data/processed/test.jsonl (6,496 rows, label 1 = unsafe):
 accuracy / precision / recall / F1 at threshold 0.5, single-text latency,
@@ -134,7 +134,7 @@ def bench_hf_model(repo, texts, device, batch_size=64):
     }
 
 
-def bench_censer(texts, device, ckpt_path=None, tok_dir=None, label="KucLab/Barist.1 (this work)"):
+def bench_censer(texts, device, ckpt_path=None, tok_dir=None, label="KucLab/Barist.2 (this work)"):
     from kuclab.evaluate import predict_proba
     from kuclab.model import KucLabCneser, ModelConfig
     from kuclab.tokenizer import KucTokenizer

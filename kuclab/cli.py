@@ -5,19 +5,28 @@ import json
 import sys
 
 from .infer import SafetyModel
+
+CAT_PRIORITY = ["sexual_abuse", "self_harm", "violence", "weapons_explosives", "drugs",
+                "cybercrime_fraud", "jailbreak_injection", "illegal_marketplace", "other_unsafe",
+                "hate_harassment"]  # hate last: catch-all
+
+
+def _cat_rank(c: str) -> int:
+    return CAT_PRIORITY.index(c) if c in CAT_PRIORITY else 99
+
 from .langdetect import detect_lang, must_catch_hit, review_hit, is_support_context, SUPPORT_LINK
 
 
 
 
 
-BANNER = "Barist.1 - napis text, Enter. 'exit' pro konec."
+BANNER = "Barist.2 - napis text, Enter. 'exit' pro konec."
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="barist.1",
-        description="Barist.1: tiny multilingual safety classifier. Prints safe or unsafe.",
+        description="Barist.2: tiny multilingual safety classifier. Prints safe or unsafe.",
     )
     parser.add_argument("text", nargs="*", help="text to classify; omit to read stdin or use --repl")
     parser.add_argument("--checkpoint", default="checkpoints/best.pt")
@@ -54,7 +63,7 @@ def _color(text: str, code: str) -> str:
 class HubClassifier:
     """The published model from the Hub, loaded with plain transformers."""
 
-    def __init__(self, repo: str = "KucLab/Barist.1", device: str | None = None) -> None:
+    def __init__(self, repo: str = "KucLab/Barist.2", device: str | None = None) -> None:
         import torch
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -78,34 +87,53 @@ class HubClassifier:
             logits = self.model(**enc).logits[0] / max(temp, 1e-6)
             probs = logits.sigmoid() if n_labels > 2 else logits.softmax(-1)
         p = float(probs[1])
+        lang = detect_lang(text)
         lang_thr = getattr(self.model.config, "lang_thresholds", None) or {}
-        thr = float(lang_thr.get(detect_lang(text), lang_thr.get("default", 0.5)))
+        thr = float(lang_thr.get(lang, lang_thr.get("default", 0.5)))
         label = "unsafe" if p >= thr else "safe"
         cats = []
+        hit = must_catch_hit(text)  # Barist.2 hard pre-filter
+        if hit:
+            label = "unsafe"
+        help_ctx = is_support_context(text)
+        support = help_ctx or "self_harm" in hit
+        cat_block: list[str] = []
         if n_labels > 2:
             id2label = self.model.config.id2label
             cat_thr = getattr(self.model.config, "cat_thresholds", None) or {}
             cat_exp = set(getattr(self.model.config, "cat_experimental", []) or [])
-            hit = must_catch_hit(text)  # Barist.1 hard pre-filter
-            for name in hit:
+            if not support and lang in ("cs", "sk", "default"):
+                # hard block: sexual_abuse / self_harm category score >= 0.3 blocks
+                # regardless of the language threshold (0.3 = block decision only)
+                for i in range(2, n_labels):
+                    if id2label[i] in ("sexual_abuse", "self_harm") and float(probs[i]) >= 0.3:
+                        cat_block.append(id2label[i])
+            if cat_block:
                 label = "unsafe"
-                if name not in cats:
-                    cats.append(name)
+            if help_ctx and not hit and not cat_block:
+                label = "safe"  # help-seeking context is never blocked
             if label == "unsafe":
-                passed = [(float(probs[i]), id2label[i]) for i in range(2, n_labels)
-                          if float(probs[i]) >= float(cat_thr.get(id2label[i], 0.5)) and id2label[i] not in cat_exp]
-                passed.sort(reverse=True)
-                cats = [name for _, name in passed[:2]] + [c for c in cats if c not in {n for _, n in passed[:2]}]  # top-2 + pre-filter hits
-        hit = must_catch_hit(text)
-        support = is_support_context(text) or "self_harm" in hit
-        override = "must_catch" if hit else None
+                fired = [(float(probs[i]), id2label[i]) for i in range(2, n_labels)
+                         if float(probs[i]) >= float(cat_thr.get(id2label[i], 0.5)) and id2label[i] not in cat_exp]
+                fired_set = {name for _, name in fired} | set(hit) | set(cat_block)
+                fired.sort(key=lambda x: (_cat_rank(x[1]), -x[0]))
+                if not fired_set:  # unsafe must always carry >=1 category: top-1 by score
+                    top = max(((float(probs[i]), id2label[i]) for i in range(2, n_labels)), key=lambda x: x[0])
+                    fired = [top]
+                    fired_set = {top[1]}
+                cats = [name for _, name in fired[:2]] + [c for c in (hit + cat_block) if c not in {n for _, n in fired[:2]}]
+        if not support and n_labels > 2 and "self_harm" in id2label.values():
+            i_sh = [i for i, v in id2label.items() if v == "self_harm"][0]
+            if float(probs[i_sh]) >= 0.3:
+                support = True
+        override = "must_catch" if hit else ("category_block" if cat_block else None)
         review = bool(review_hit(text))
         return label, p, cats, override, (SUPPORT_LINK if support else None), review
 
 
 def run_ui(predict, source: str) -> int:
     """Small interactive terminal UI: phrase in, safe/unsafe + score out."""
-    print(f"Barist.1 - interactive terminal UI  [{source}]")
+    print(f"Barist.2 - interactive terminal UI  [{source}]")
     print("Type a phrase, Enter to classify. 'exit' to quit.\n")
     while True:
         try:
@@ -134,11 +162,11 @@ def ui_main(argv: list[str] | None = None) -> int:
     """Entry point for the `barist.1` command."""
     parser = argparse.ArgumentParser(
         prog="barist.1",
-        description="Barist.1 terminal UI: classify text as safe/unsafe (+ categories). "
+        description="Barist.2 terminal UI: classify text as safe/unsafe (+ categories). "
         "Run without arguments for the interactive UI.",
     )
     parser.add_argument("text", nargs="*", help="phrase to classify once; omit to open the interactive UI")
-    parser.add_argument("--repo", default="KucLab/Barist.1", help="Hub repo id of the model")
+    parser.add_argument("--repo", default="KucLab/Barist.2", help="Hub repo id of the model")
     parser.add_argument("--checkpoint", default=None, help="use a local training checkpoint instead of the Hub model")
     parser.add_argument("--device", default=None, help="cuda / cpu (default: auto)")
     parser.add_argument("--json", action="store_true", help="one-shot JSON output")

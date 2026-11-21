@@ -3,6 +3,13 @@
     python serve.py --port 8000                   # serves the local HF bundle dir (run from the bundle root)
     CENSER_DIR=/path/to/bundle python scripts/serve.py
 
+Response fields per text: `label` ("safe"/"unsafe"), `unsafe`, `score`,
+`categories` (top-2 by priority: sexual_abuse > self_harm > violence/weapons > ... > hate;
+unsafe always gets >=1 category), `override` ("must_catch" when the deterministic
+pre-filter fired), `needs_review` (jailbreak/legally-ambiguous patterns — review, not a
+block), `needs_support` (Linka bezpečí URL when self-harm is indicated, regex or
+model score >= 0.3).
+
 Endpoints:
     GET  /health          -> {"status": "ok", "model": ...}
     POST /classify        -> {"texts": [...]}  => {"results": [{label, unsafe, score, categories, chunks}]}

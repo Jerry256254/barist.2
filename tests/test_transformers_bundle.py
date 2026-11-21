@@ -65,7 +65,7 @@ def test_weights_have_llama_layout(bundle):
 
 
 def test_score_head_is_untied_and_remaps_legacy(bundle):
-    """Barist.1 uses a separate linear score head (not tied to embeddings);
+    """Barist.2 uses a separate linear score head (not tied to embeddings);
     legacy tied checkpoints must load through remap_legacy_state."""
     from safetensors.torch import load_file
 

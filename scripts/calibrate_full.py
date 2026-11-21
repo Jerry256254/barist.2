@@ -136,6 +136,21 @@ def main() -> None:
                            "experimental": best[1] < 0.3}  # weak cats are flagged experimental
         print(f"{cat:22s} thr={best[0]:.2f} f1={best[1]:.4f} prev={sum(yv)/len(yv):.3f}")
 
+    # C (Barist.1.1 review): category-priority fixes — CSAM & self-harm get a fixed
+    # low threshold (they must win over hate), hate is capped into 0.40-0.45,
+    # other_unsafe restored to 0.45.
+    for cat, thr in (("sexual_abuse", 0.3), ("self_harm", 0.3)):
+        if cat in thresholds:
+            thresholds[cat] = thr
+            categories[cat]["best_threshold"] = thr
+            categories[cat]["note"] = "fixed 0.3 per review: CSAM/self-harm priority over hate"
+    if "hate_harassment" in thresholds:
+        thresholds["hate_harassment"] = min(max(thresholds["hate_harassment"], 0.40), 0.45)
+        categories["hate_harassment"]["best_threshold"] = thresholds["hate_harassment"]
+    if "other_unsafe" in thresholds:
+        thresholds["other_unsafe"] = 0.45
+        categories["other_unsafe"]["best_threshold"] = 0.45
+
     result = {
         "checkpoint": args.checkpoint,
         "temperature": temperature,
