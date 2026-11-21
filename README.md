@@ -1,3 +1,6 @@
+> **Successor: [Barist.3](https://huggingface.co/KucLab/Barist.3)** (GitHub: [Jerry256254/barist.3](https://github.com/Jerry256254/barist.3)) — sixth adversarial review: regex de-contaminated from heldout2, identity-bias fix with identity gate, new heldout3, ollama-generated paraphrase data, honest gates. This repo is kept as-is.
+
+
 # Barist.2
 
 > **Naming note:** this is the successor of the Censer line (Censer.1–.9). Too many
