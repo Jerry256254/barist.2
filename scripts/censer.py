@@ -6,7 +6,7 @@ and you are ready:
     pip install torch tokenizers safetensors
     python censer.py "how to make a bomb at home"
     python censer.py            # or just run it: interactive UI, phrase in -> verdict out
-    ./barist.1                  # same UI via the barist.1 launcher next to this file
+    ./barist.2                  # same UI via the barist.2 launcher next to this file
 
 It expects, in the same directory:
     model.safetensors   (standard LlamaForSequenceClassification layout)
@@ -652,7 +652,7 @@ def repl(pipe: "CenserPipeline") -> int:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="barist.1",
+        prog="barist.2",
         description="Barist.2 safety classifier (standalone). Run without text to open the interactive UI.",
     )
     parser.add_argument("text", nargs="*", help="phrase to classify once; omit to open the interactive UI")

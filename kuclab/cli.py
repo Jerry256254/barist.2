@@ -25,7 +25,7 @@ BANNER = "Barist.2 - napis text, Enter. 'exit' pro konec."
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="barist.1",
+        prog="barist.2",
         description="Barist.2: tiny multilingual safety classifier. Prints safe or unsafe.",
     )
     parser.add_argument("text", nargs="*", help="text to classify; omit to read stdin or use --repl")
@@ -159,9 +159,9 @@ def run_ui(predict, source: str) -> int:
 
 
 def ui_main(argv: list[str] | None = None) -> int:
-    """Entry point for the `barist.1` command."""
+    """Entry point for the `barist.2` command."""
     parser = argparse.ArgumentParser(
-        prog="barist.1",
+        prog="barist.2",
         description="Barist.2 terminal UI: classify text as safe/unsafe (+ categories). "
         "Run without arguments for the interactive UI.",
     )
